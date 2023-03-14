@@ -1,6 +1,29 @@
 import numpy as np
 from PIL import Image
 import hashlib
+from typing import Tuple
+
+
+class WFCModel:
+    def __init__(self, image_path, tile_size: Tuple, flip_horizontal=False, flip_vertical=False, rotate=False):
+        self.tileset = get_tiles(image_path, tile_size, flip_horizontal, flip_vertical, rotate)
+        self.adjacency = get_adjacent_tiles(self.tileset)
+        self.superposition = None
+
+    def init_superposition(self, size):
+        height, width = size
+        arr = np.empty((height, width), dtype=object)
+        for i in range(height):
+            for j in range(width):
+                arr[i, j] = set(self.tileset)
+
+    def collapse(self, r, c, value):
+        self.superposition[r][c] = set([value])
+        
+    def update_superposition(self, r, c):
+        
+
+
 
 def hash_tile(tile):
     return hashlib.md5(tile.tobytes()).hexdigest()
