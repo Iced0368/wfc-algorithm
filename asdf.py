@@ -1,12 +1,15 @@
-import numpy as np
+X = {1, 2, 3}
+Y = {2, 3, 4}
 
-tileset = [1, 2, 3]
-width = 5
-height = 3
+# Check the identity of X before the intersection operation
+original_id = id(X)
 
-arr = np.empty((height, width), dtype=object)
-for i in range(height):
-    for j in range(width):
-        arr[i, j] = tileset.copy()
+# Perform intersection operation and check identity of X again
+X &= Y
+new_id = id(X)
 
-print(arr)
+# Compare the identity of X before and after intersection operation
+if original_id == new_id:
+    print("X has not been updated")
+else:
+    print("X has been updated")

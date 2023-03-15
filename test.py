@@ -1,21 +1,28 @@
+#%%matplotlib inline
 import matplotlib.pyplot as plt
 import random, time
 from PIL import Image
 from wfc import *
 
-s = time.time()
-tiles = get_tiles('sample/Flowers.png', (4, 4), flip_horizontal=True)
-print(time.time()-s)
+model = WFCModel('sample/Knot.png', (5,5), flip_horizontal=True, flip_vertical=True, rotate=True)
 
-s = time.time()
-adj = get_adjacent_tiles(tiles)
-print(time.time()-s)
+print(len(model.tileset))
+"""
+print(random.choice(list(model.tileset.values())))
+print(average_tiles(list(model.tileset.values())))
 
-tile_hash = random.choice(list(tiles.keys()))
+"""
 
-plt.imshow(tiles[tile_hash])
-plt.show()
+model.generate((32, 32), True)
 
-for adj_tile_hash in adj[tile_hash]['bottom']:
-    plt.imshow(tiles[adj_tile_hash])
+img = model.overwrite_tile()
+if img is None:
+    print("TT_TT")
+
+else:
+    print(img)
+    plt.imshow(img)
     plt.show()
+
+
+# %%
