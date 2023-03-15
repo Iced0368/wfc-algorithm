@@ -7,6 +7,7 @@ import sys
 from PIL import Image
 from typing import Tuple
 
+
 sys.setrecursionlimit(10**7)
 
 class WFCModel:
@@ -106,9 +107,13 @@ class WFCModel:
             self.collapse(index[0], index[1], tile_hash)
 
             if show_process:
+                img = self.overwrite_tile()
+                if img is None:
+                    return
                 clear_output(wait=True)
-                plt.imshow(self.overwrite_tile())
+                plt.imshow(img)
                 plt.show()
+
             #print('entropy=', entropy)
             #self.show_entropy()
             entropy, indices = self.get_minimum_entropy()

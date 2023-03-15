@@ -1,15 +1,18 @@
-X = {1, 2, 3}
-Y = {2, 3, 4}
+import asyncio
 
-# Check the identity of X before the intersection operation
-original_id = id(X)
+async def compute_f(value):
+    # Compute function f on value
+    return value*value
 
-# Perform intersection operation and check identity of X again
-X &= Y
-new_id = id(X)
+async def process_values(values):
+    tasks = []
+    for value in values:
+        tasks.append(asyncio.create_task(compute_f(value)))
+    results = await asyncio.gather(*tasks)
+    return results
 
-# Compare the identity of X before and after intersection operation
-if original_id == new_id:
-    print("X has not been updated")
-else:
-    print("X has been updated")
+# Example usage
+values = [1, 2, 3, 4, 5]
+results = asyncio.run(process_values(values))
+
+print(results)

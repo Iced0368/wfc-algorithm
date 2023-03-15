@@ -4,7 +4,7 @@ import random, time
 from PIL import Image
 from wfc import *
 
-model = WFCModel('sample/Knot.png', (5,5), flip_horizontal=True, flip_vertical=True, rotate=True)
+model = WFCModel('sample/Flowers.png', (3, 3), flip_horizontal=True, flip_vertical=False, rotate=False)
 
 print(len(model.tileset))
 """
@@ -13,7 +13,7 @@ print(average_tiles(list(model.tileset.values())))
 
 """
 
-model.generate((32, 32), True)
+model.generate((64, 64), True)
 
 img = model.overwrite_tile()
 if img is None:
@@ -21,8 +21,8 @@ if img is None:
 
 else:
     print(img)
-    plt.imshow(img)
-    plt.show()
+    #plt.imshow(img)
+    #plt.show()
 
 
 # %%
