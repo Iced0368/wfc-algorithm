@@ -13,7 +13,7 @@ print(average_tiles(list(model.tileset.values())))
 
 """
 
-model.generate((64, 64), True)
+model.generate((20, 20), True)
 
 img = model.overwrite_tile()
 if img is None:

@@ -1,14 +1,16 @@
 import numpy as np
-from IPython.display import clear_output
 import matplotlib.pyplot as plt
 import hashlib
 import random
 import sys
+from queue import Queue
+from IPython.display import clear_output
 from PIL import Image
 from typing import Tuple
 
-
 sys.setrecursionlimit(10**7)
+
+DIRECTIONS = ['top', 'bottom', 'left', 'right']
 
 class WFCModel:
     def __init__(self, image_path, tile_size: Tuple, flip_horizontal=False, flip_vertical=False, rotate=False):
@@ -18,6 +20,7 @@ class WFCModel:
         self.superposition = None
         self.possible_patterns = None
         self.grid_size = None
+        self.prop_state = None
         print('model initialization finised')
 
 
@@ -32,22 +35,38 @@ class WFCModel:
                 pos_pat[i, j] = {'top': set(self.tileset), 'bottom': set(self.tileset), 'left': set(self.tileset), 'right': set(self.tileset)}
         self.superposition = superpos
         self.possible_patterns = pos_pat
+        self.prop_state = {}
         print('superposition initialization finised')
 
     def is_valid_index(self, r, c):
         return r >= 0 and c >= 0 and r < self.grid_size[0] and c < self.grid_size[1]
 
+    def hash_index(self, r, c):
+        return self.grid_size[1] * r + c
+    
+    def decode_index(self, n):
+        return (n // self.grid_size[1], n % self.grid_size[1])
+
+
+    def propagate(self, r, c, dir):
+        ar, ac = dir_index((r, c), dir)
+        if not self.is_valid_index(ar, ac):
+            return
+        index_hash =  self.hash_index(ar, ac)
+        if index_hash in self.prop_state:
+            self.prop_state[index_hash].append(opposite(dir))
+        else:
+            self.prop_state[index_hash] = [opposite(dir)]
+
     def collapse(self, r, c, value):
         self.superposition[r, c] = set([value])
-        for dir in ['top', 'bottom', 'left', 'right']:
+        for dir in DIRECTIONS:
             self.possible_patterns[r, c][dir] = self.adjacency[value][dir]
-        for dir in ['top', 'bottom', 'left', 'right']:
-            ar, ac = dir_index((r, c), dir)
-            if self.is_valid_index(ar, ac):
-                self.update_superposition(ar, ac, updated_from=[opposite(dir)])
+        for dir in DIRECTIONS:
+            self.propagate(r, c, dir)
 
         
-    def update_superposition(self, r, c, updated_from=['top', 'bottom', 'left', 'right']):
+    def update_superposition(self, r, c, updated_from):
         changed = False
         # Superposition Update
         for dir in updated_from:
@@ -63,7 +82,7 @@ class WFCModel:
         
         changed = False
         # Adjacency Update
-        for dir in ['top', 'bottom', 'left', 'right']:
+        for dir in DIRECTIONS:
             pos_pat = set()
             for tile_hash in self.superposition[r, c]:
                 pos_pat |= self.adjacency[tile_hash][dir]
@@ -74,16 +93,16 @@ class WFCModel:
         if not changed: # If nothing changed in Adjacency, Not need to propagate
             return
 
-        for dir in ['top', 'bottom', 'left', 'right']:
-            if dir in updated_from: # No need to propagte to Updated-from
+        # Propagate
+        for dir in DIRECTIONS:
+            if dir in updated_from: # Not need to propagte to Updated-from
                 continue
-            ar, ac = dir_index((r, c), dir)
-            if self.is_valid_index(ar, ac):
-                self.update_superposition(ar, ac, updated_from=[opposite(dir)])
+            self.propagate(r, c, dir)
+
 
 
     def get_minimum_entropy(self):
-        min_entropy = 99999
+        min_entropy = len(self.superposition[0, 0])
         result = []
         for r in range(self.grid_size[0]):
             for c in range(self.grid_size[1]):
@@ -95,17 +114,41 @@ class WFCModel:
                 elif len(self.superposition[r, c]) == min_entropy:
                     result.append((r, c))
         return (min_entropy, result)
+    
+
+    def update_wave(self):
+        items = list(self.prop_state.items())
+        self.prop_state = {}
+        for index_hash, updated_from in items:
+            r, c = self.decode_index(index_hash)
+            if self.is_valid_index(r, c):
+                self.update_superposition(r, c, updated_from)
+        
+        #self.show_entropy()
+
+
+    def next_step(self):
+        entropy, indices = self.get_minimum_entropy()
+        if entropy == 0:
+            return -1
+        if entropy == 1:
+            return 1
+        
+        index = random.choice(indices)
+        tile_hash = random.choice(list(self.superposition[index[0], index[1]]))
+        self.collapse(index[0], index[1], tile_hash)
+
+        while len(self.prop_state) > 0:
+            self.update_wave()
+             
+        return 0
+
 
 
     def generate(self, size, show_process=False):
         self.init_superposition(size)
 
-        entropy, indices = self.get_minimum_entropy()
-        while entropy > 1 and entropy != 99999:
-            index = random.choice(indices)
-            tile_hash = random.choice(list(self.superposition[index[0], index[1]]))
-            self.collapse(index[0], index[1], tile_hash)
-
+        while self.next_step() == 0:
             if show_process:
                 img = self.overwrite_tile()
                 if img is None:
@@ -114,9 +157,6 @@ class WFCModel:
                 plt.imshow(img)
                 plt.show()
 
-            #print('entropy=', entropy)
-            #self.show_entropy()
-            entropy, indices = self.get_minimum_entropy()
 
     def overwrite_tile(self):
         # Create the output image with the specified size
@@ -144,7 +184,7 @@ class WFCModel:
     def show_entropy(self):
         for r in range(self.grid_size[0]):
             for c in range(self.grid_size[1]):
-                print(str(len(self.superposition[r, c])).rjust(5), end='')
+                print(str(len(self.superposition[r, c])).rjust(4), end='')
             print()
         print()
 
