@@ -4,25 +4,29 @@ import random, time
 from PIL import Image
 from wfc import *
 
-model = WFCModel('sample/Flowers.png', (3, 3), flip_horizontal=True, flip_vertical=False, rotate=False)
+model = WFCModel('sample/Knot.png', (5, 5), flip_horizontal=False, flip_vertical=False, rotate=True)
 
 print(len(model.tileset))
-"""
-print(random.choice(list(model.tileset.values())))
-print(average_tiles(list(model.tileset.values())))
 
 """
+adj_size = [len(model.adjacency[tile_hash]['right'])for tile_hash in list(model.tileset.keys())]
+adj_size.sort()
+print(adj_size)
 
-model.generate((20, 20), True)
+"""
+s = time.time()
+result = model.generate((10, 10), False)
+print(time.time() - s)
 
-img = model.overwrite_tile()
-if img is None:
-    print("TT_TT")
+if result:
+    img = model.overwrite_tile()
+    plt.imshow(img)
+    plt.show()
+    print(img)
 
 else:
-    print(img)
-    #plt.imshow(img)
-    #plt.show()
+    print("TT_TT")
+
 
 
 # %%

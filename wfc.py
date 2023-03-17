@@ -95,14 +95,14 @@ class WFCModel:
 
         # Propagate
         for dir in DIRECTIONS:
-            if dir in updated_from: # Not need to propagte to Updated-from
-                continue
+            #if dir in updated_from: # Not need to propagte to Updated-from
+            #    continue
             self.propagate(r, c, dir)
 
 
 
     def get_minimum_entropy(self):
-        min_entropy = len(self.superposition[0, 0])
+        min_entropy = 999999
         result = []
         for r in range(self.grid_size[0]):
             for c in range(self.grid_size[1]):
@@ -131,7 +131,7 @@ class WFCModel:
         entropy, indices = self.get_minimum_entropy()
         if entropy == 0:
             return -1
-        if entropy == 1:
+        if entropy == 999999:
             return 1
         
         index = random.choice(indices)
@@ -147,15 +147,19 @@ class WFCModel:
 
     def generate(self, size, show_process=False):
         self.init_superposition(size)
+        result = 0
 
-        while self.next_step() == 0:
+        while result == 0:
+            result = self.next_step()
             if show_process:
                 img = self.overwrite_tile()
                 if img is None:
-                    return
+                    return False
                 clear_output(wait=True)
                 plt.imshow(img)
-                plt.show()
+                plt.show()  
+
+        return result > 0
 
 
     def overwrite_tile(self):
@@ -164,6 +168,9 @@ class WFCModel:
         output_size = (self.grid_size[0]+self.tile_size[0]-1, self.grid_size[1]+self.tile_size[1]-1)
         output_image = Image.new('RGB', output_size, (0, 0, 0))
 
+        output_size = (self.grid_size[0], self.grid_size[1], 3)
+        output_image = np.zeros(output_size, dtype=np.uint8)
+
         # Loop over the grid and paste each tile onto the output image
         for i in range(self.grid_size[0]):
             for j in range(self.grid_size[1]):
@@ -171,14 +178,12 @@ class WFCModel:
                 if len(tile_hash_list) == 0:
                     return None
                 elif len(tile_hash_list) > 1:
-                    tile = average_tiles([self.tileset[hash] for hash in tile_hash_list])
+                    color = np.array([self.tileset[hash][0][0] for hash in tile_hash_list]).mean(axis=0)
                 else:
-                    tile = self.tileset[tile_hash_list[0]]
-                tile_image = Image.fromarray(tile, mode='RGB')
+                    color = self.tileset[tile_hash_list[0]][0][0]
 
-                output_image.paste(tile_image, (i, j))
-        cropped_image = output_image.crop((0, 0, self.grid_size[0], self.grid_size[1]))
-        return cropped_image.transpose(Image.ROTATE_270)
+                output_image[i][j] = color
+        return Image.fromarray(output_image)
 
 
     def show_entropy(self):
@@ -209,14 +214,6 @@ def opposite(dir):
         return 'right'
     else:
         return 'left'
-    
-
-def average_tiles(tiles):
-    sum_arr = np.zeros_like(tiles[0], dtype=np.uint64)
-    for tile in tiles:
-        sum_arr += tile.astype(np.uint64) 
-    avg_arr = sum_arr / len(tiles)
-    return np.uint8(avg_arr)
 
 
 def get_tiles(image_path, tile_size, flip_horizontal=False, flip_vertical=False, rotate=False):
@@ -259,22 +256,21 @@ def get_adjacent_tiles(tiles):
 
         # Iterate over all other tiles to check for adjacency
         for other_hash, other_tile in tiles.items():
-            if tile_hash != other_hash:
-                # Check if other tile can be placed on top of this tile
-                if np.array_equal(tile[:-1, :], other_tile[1:, :]):
-                    adjacent_tiles[tile_hash]['top'].add(other_hash)
+            # Check if other tile can be placed on top of this tile
+            if np.array_equal(tile[:-1, :], other_tile[1:, :]):
+                adjacent_tiles[tile_hash]['top'].add(other_hash)
 
-                # Check if other tile can be placed below this tile
-                if np.array_equal(tile[1:, :], other_tile[:-1, :]):
-                    adjacent_tiles[tile_hash]['bottom'].add(other_hash)
+            # Check if other tile can be placed below this tile
+            if np.array_equal(tile[1:, :], other_tile[:-1, :]):
+                adjacent_tiles[tile_hash]['bottom'].add(other_hash)
 
-                # Check if other tile can be placed to the left of this tile
-                if np.array_equal(tile[:, :-1], other_tile[:, 1:]):
-                    adjacent_tiles[tile_hash]['left'].add(other_hash)
+            # Check if other tile can be placed to the left of this tile
+            if np.array_equal(tile[:, :-1], other_tile[:, 1:]):
+                adjacent_tiles[tile_hash]['left'].add(other_hash)
 
-                # Check if other tile can be placed to the right of this tile
-                if np.array_equal(tile[:, 1:], other_tile[:, :-1]):
-                    adjacent_tiles[tile_hash]['right'].add(other_hash)
+            # Check if other tile can be placed to the right of this tile
+            if np.array_equal(tile[:, 1:], other_tile[:, :-1]):
+                adjacent_tiles[tile_hash]['right'].add(other_hash)
 
     return adjacent_tiles
 # %%
