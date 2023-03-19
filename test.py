@@ -4,29 +4,43 @@ import random, time
 from PIL import Image
 from wfc import *
 
-model = WFCModel('sample/Knot.png', (5, 5), flip_horizontal=False, flip_vertical=False, rotate=True)
+
+s = time.time()
+model = WFCModel('sample/MagicOffice.png', 
+                 (3, 3), 
+                 flip_horizontal=False, 
+                 flip_vertical=False, 
+                 rotate=True)
+print(time.time()-s)
 
 print(len(model.tileset))
 
-"""
-adj_size = [len(model.adjacency[tile_hash]['right'])for tile_hash in list(model.tileset.keys())]
-adj_size.sort()
-print(adj_size)
+# %%
 
-"""
+show_process = 30
+show_prop = False
+seed = None
+
 s = time.time()
-result = model.generate((10, 10), False)
+result = model.generate((128, 64), show_process, show_prop, seed)
 print(time.time() - s)
 
 if result:
     img = model.overwrite_tile()
-    plt.imshow(img)
-    plt.show()
+    if not show_process:
+        plt.imshow(img)
+        plt.axis('off')
+        plt.show()
     print(img)
 
 else:
     print("TT_TT")
 
+
+
+# %%
+model.view_performance()
+model.view_log()
 
 
 # %%

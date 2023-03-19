@@ -1,35 +1,62 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import hashlib
 import random
 import sys
 import time
+import asyncio
+from queue import PriorityQueue
 from IPython.display import clear_output
 from PIL import Image
-
-from wfc_tiling import *
-from util import *
+from typing import Tuple
 
 
 sys.setrecursionlimit(10**7)
 
 DIRECTIONS = ['top', 'bottom', 'left', 'right']
 
+class PropWave:
+    def __init__(self, epicenter, grid_size):
+        self.updated_from = {}
+        self.heapq = PriorityQueue()
+        self.epicenter = epicenter
+        self.grid_size = grid_size
+
+    def size(self):
+        return len(self.updated_from)
+
+    def add(self, r, c, dir):
+        index_hash = self.grid_size[1]*r + c
+        if index_hash in self.updated_from:
+            self.updated_from[index_hash].append(opposite(dir))
+        else:
+            self.updated_from[index_hash] = [opposite(dir)]
+            self.heapq.put((ManhattanDistance((r, c), (self.epicenter)), index_hash))
+            
+
+    def pop(self): # return index_hash, updated_from
+        if self.size() == 0:
+            return None
+        dist, index_hash = self.heapq.get()
+        return (index_hash, self.updated_from.pop(index_hash))
+
+
+
 class WFCModel:
-    def __init__(self, image_path, tile_size, flip_horizontal=False, flip_vertical=False, rotate=False):
+    def __init__(self, image_path, tile_size: Tuple, flip_horizontal=False, flip_vertical=False, rotate=False):
         self.tile_size = tile_size
-        self.tileset, self.weights = get_tiles(image_path, tile_size, flip_horizontal, flip_vertical, rotate)
+        self.tileset = get_tiles(image_path, tile_size, flip_horizontal, flip_vertical, rotate)
         self.adjacency = get_adjacent_tiles(self.tileset)
 
         cnt = 0
         for key in list(self.tileset.keys()):
             if len(self.adjacency[key]['top']) == 0 or len(self.adjacency[key]['left']) == 0 or len(self.adjacency[key]['right']) == 0 or len(self.adjacency[key]['bottom']) == 0:
                 del self.tileset[key]
-                del self.weights[key]
                 cnt +=1
         self.adjacency = get_adjacent_tiles(self.tileset)
         print(f'{cnt} Eliminated')
 
-        self.average_color = np.array([self.tileset[hash][0][0] for hash in list(self.tileset.keys())]).mean(axis=0)
+        self.average_color = np.array([self.tileset[hash][0][0] for hash in list(self.tileset.keys())]).mean(axis=0)[:3]
 
         self.superposition = None
         self.possible_patterns = None
@@ -42,8 +69,8 @@ class WFCModel:
 
 
     def init_superposition(self, size):
-        width, height = size
-        self.grid_size = (height, width)
+        self.grid_size = size
+        height, width = size
         superpos = np.empty((height, width), dtype=object)
         pos_pat = np.empty((height, width), dtype=object)
         for i in range(height):
@@ -52,7 +79,6 @@ class WFCModel:
                 pos_pat[i, j] = {'top': set(self.tileset), 'bottom': set(self.tileset), 'left': set(self.tileset), 'right': set(self.tileset)}
         self.superposition = superpos
         self.possible_patterns = pos_pat
-        self.prop_state = {}
         self.performance = {'Propagate': [], 'Visualize': []}
         self.log = {'Observed': []}
         print('superposition initialization finised')
@@ -72,15 +98,13 @@ class WFCModel:
         ar, ac = dir_index((r, c), dir)
         if not self.is_valid_index(ar, ac):
             return
-        index_hash = self.hash_index(ar, ac)
-        if index_hash in self.prop_state:
-            self.prop_state[index_hash].append(opposite(dir))
-        else:
-            self.prop_state[index_hash] = [opposite(dir)]
+        self.prop_state.add(ar, ac, opposite(dir))
 
 
     def collapse(self, r, c, value):
+        self.prop_state = PropWave(epicenter=(r, c), grid_size=self.grid_size)
         self.superposition[r, c] = set([value])
+
         for dir in DIRECTIONS:
             self.possible_patterns[r, c][dir] = self.adjacency[value][dir]
         for dir in DIRECTIONS:
@@ -90,7 +114,7 @@ class WFCModel:
     def update_superposition(self, r, c, updated_from):
         changed = False
         # Superposition Update
-        for dir in updated_from:
+        for dir in DIRECTIONS:
             ar, ac = dir_index((r, c), dir)
             if self.is_valid_index(ar, ac):
                 prev_len = len(self.superposition[r, c])
@@ -121,7 +145,6 @@ class WFCModel:
             self.propagate(r, c, dir)
 
 
-
     def get_minimum_entropy(self):
         min_entropy = 999999
         observed_cnt = 0
@@ -140,44 +163,28 @@ class WFCModel:
         return (min_entropy, result)
     
 
-    def update_wave(self):
-        items = list(self.prop_state.items())
-        self.prop_state = {}
-        for index_hash, updated_from in items:
-            r, c = self.decode_index(index_hash)
-            if self.is_valid_index(r, c):
-                self.update_superposition(r, c, updated_from)
-        
-        #self.show_entropy()
-
-
-    def next_step(self, show_prop=False):
+    def next_step(self, show_prop=False, seed=random.random()):
+        random.seed(seed)
         entropy, indices = self.get_minimum_entropy()
         if entropy == 0:
             return -1
         if entropy == 999999:
             return 1
-        
+
         index = random.choice(indices)
-        tile_hash = weighted_choice(self.weights, list(self.superposition[index[0], index[1]]))
+        tile_hash = random.choice(list(self.superposition[index[0], index[1]]))
         self.collapse(index[0], index[1], tile_hash)
 
-        while len(self.prop_state) > 0:
-            self.update_wave()
-
-            if show_prop:
-                clear_output(wait=True)
-                self.view_prop_wave()
+        while self.prop_state.size() > 0:
+            index_hash, updated_from = self.prop_state.pop()
+            r, c = self.decode_index(index_hash)
+            if self.is_valid_index(r, c):
+                self.update_superposition(r, c, updated_from)
              
         return 0
 
 
-    def generate(self, size, show_process=False, show_prop=False, seed=None):
-        if seed is not None:
-            random.seed(seed)
-        else:
-            seed = random.randint(0, 100000000)
-
+    def generate(self, size, show_process=False, show_prop=False, seed=random.random()):
         self.init_superposition(size)
         result = 0
         step = 0
@@ -185,7 +192,7 @@ class WFCModel:
         while result == 0:
             step += 1
             s = time.time()
-            result = self.next_step(show_prop)
+            result = self.next_step(show_prop, seed)
             self.performance['Propagate'].append(time.time()-s)
 
             if show_process and (step % show_process == 0 or result == 1):
@@ -198,8 +205,9 @@ class WFCModel:
                 plt.axis('off')
                 plt.show()
                 self.performance['Visualize'].append(time.time()-s)
-                
+
         print('generate seed:', seed)
+
         return result > 0
     
 
@@ -219,14 +227,14 @@ class WFCModel:
                 if len(tile_hash_list) == 0:
                     return None
                 elif len(tile_hash_list) > 1:
-                    if len(tile_hash_list) >= 0.9 * len(self.tileset):
+                    if len(tile_hash_list) >= 1 * len(self.tileset):
                         color = self.average_color
                     else:
                         color = np.array([self.tileset[hash][0][0] for hash in tile_hash_list]).mean(axis=0)
                 else:
                     color = self.tileset[tile_hash_list[0]][0][0]
 
-                output_image[i][j] = color
+                output_image[i][j] = color[:3]
         return Image.fromarray(output_image)
 
 
@@ -261,3 +269,87 @@ class WFCModel:
             plt.plot(value, label=key)
         plt.legend()
         plt.show()
+
+
+
+
+drdc = {'top': (-1, 0), 'bottom': (1, 0), 'left': (0, -1), 'right': (0, 1)}
+
+def dir_index(index, dir):
+    dr, dc = drdc[dir]
+    return (index[0]+dr, index[1]+dc)
+
+def hash_tile(tile):
+    return hashlib.sha256(tile.tobytes()).hexdigest()
+
+def ManhattanDistance(p1, p2):
+    return abs(p1[0]-p2[0]) + abs(p1[1]-p2[1])
+    
+def opposite(dir):
+    if dir == 'top':
+        return 'bottom'
+    elif dir =='bottom':
+        return 'top'
+    elif dir =='left':
+        return 'right'
+    else:
+        return 'left'
+
+
+def get_tiles(image_path, tile_size, flip_horizontal=False, flip_vertical=False, rotate=False):
+    image = Image.open(image_path)
+    tiles = {}
+    width, height = image.size
+
+    for i in range(0, width - tile_size[0] + 1):
+        for j in range(0, height - tile_size[1] + 1):
+            box = (i, j, i+tile_size[0], j+tile_size[1])
+            tile_img = image.crop(box)
+
+            if flip_horizontal:
+                tile_img_h = tile_img.transpose(Image.FLIP_LEFT_RIGHT)
+                tile_hash_h = hash_tile(tile_img_h)
+                tiles[tile_hash_h] = np.array(tile_img_h)
+
+            if flip_vertical:
+                tile_img_v = tile_img.transpose(Image.FLIP_TOP_BOTTOM)
+                tile_hash_v = hash_tile(tile_img_v)
+                tiles[tile_hash_v] = np.array(tile_img_v)
+
+            if rotate:
+                for k in range(3):
+                    tile_img_r = tile_img.rotate((k+1)*90)
+                    tile_hash_r = hash_tile(tile_img_r)
+                    tiles[tile_hash_r] = np.array(tile_img_r)
+
+            tile_hash = hash_tile(tile_img)
+            tiles[tile_hash] = np.array(tile_img)
+
+    return tiles
+
+
+def get_adjacent_tiles(tiles):
+    adjacent_tiles = {}
+    for tile_hash, tile in tiles.items():
+        # Initialize the list of adjacent tiles for this tile
+        adjacent_tiles[tile_hash] = {'top': set(), 'bottom': set(), 'left': set(), 'right': set()}
+
+        # Iterate over all other tiles to check for adjacency
+        for other_hash, other_tile in tiles.items():
+            # Check if other tile can be placed on top of this tile
+            if np.array_equal(tile[:-1, :], other_tile[1:, :]):
+                adjacent_tiles[tile_hash]['top'].add(other_hash)
+
+            # Check if other tile can be placed below this tile
+            if np.array_equal(tile[1:, :], other_tile[:-1, :]):
+                adjacent_tiles[tile_hash]['bottom'].add(other_hash)
+
+            # Check if other tile can be placed to the left of this tile
+            if np.array_equal(tile[:, :-1], other_tile[:, 1:]):
+                adjacent_tiles[tile_hash]['left'].add(other_hash)
+
+            # Check if other tile can be placed to the right of this tile
+            if np.array_equal(tile[:, 1:], other_tile[:, :-1]):
+                adjacent_tiles[tile_hash]['right'].add(other_hash)
+
+    return adjacent_tiles
