@@ -2,6 +2,7 @@ import numpy as np
 import hashlib
 from PIL import Image
 
+from util import DIRECTIONS, opposite
 
 def hash_tile(tile):
     return hashlib.sha256(tile.tobytes()).hexdigest()
@@ -57,26 +58,27 @@ def get_tiles(image_path, tile_size, flip_horizontal=False, flip_vertical=False,
 
 def get_adjacent_tiles(tiles):
     adjacent_tiles = {}
+
+    edge_sources = {}
+
     for tile_hash, tile in tiles.items():
-        # Initialize the list of adjacent tiles for this tile
-        adjacent_tiles[tile_hash] = {'top': set(), 'bottom': set(), 'left': set(), 'right': set()}
+        slices = [tile[:-1, :], tile[1:, :], tile[:, :-1], tile[:, 1:]]
+        for i in range(4):
+            hash_value = hash_tile(slices[i])
 
-        # Iterate over all other tiles to check for adjacency
-        for other_hash, other_tile in tiles.items():
-            # Check if other tile can be placed on top of this tile
-            if np.array_equal(tile[:-1, :], other_tile[1:, :]):
-                adjacent_tiles[tile_hash]['top'].add(other_hash)
+            if hash_value not in edge_sources:
+                edge_sources[hash_value] = {dir: [] for dir in DIRECTIONS}
 
-            # Check if other tile can be placed below this tile
-            if np.array_equal(tile[1:, :], other_tile[:-1, :]):
-                adjacent_tiles[tile_hash]['bottom'].add(other_hash)
+            edge_sources[hash_value][DIRECTIONS[i]].append(tile_hash)
 
-            # Check if other tile can be placed to the left of this tile
-            if np.array_equal(tile[:, :-1], other_tile[:, 1:]):
-                adjacent_tiles[tile_hash]['left'].add(other_hash)
+    for tile_hash in tiles:
+        adjacent_tiles[tile_hash] = {dir: set() for dir in DIRECTIONS}
 
-            # Check if other tile can be placed to the right of this tile
-            if np.array_equal(tile[:, 1:], other_tile[:, :-1]):
-                adjacent_tiles[tile_hash]['right'].add(other_hash)
+    for edges in edge_sources.values(): 
+        for dir in DIRECTIONS:
+            for tile_hash in edges[dir]:
+                adj = adjacent_tiles[tile_hash]
+                for other_hash in edges[opposite(dir)]:
+                    adj[dir].add(other_hash)
 
     return adjacent_tiles

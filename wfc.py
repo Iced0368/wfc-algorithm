@@ -6,28 +6,40 @@ import time
 from IPython.display import clear_output
 from PIL import Image
 
-from wfc_tiling import *
-from util import *
-
+from wfc_tiling import get_tiles, get_adjacent_tiles
+from util import opposite, dir_index, DIRECTIONS
 
 sys.setrecursionlimit(10**7)
+    
+def weighted_choice(weights, values):
+    total_weight = sum([weights[val] for val in values])
+    rand_num = random.randint(0, total_weight)
+    weight_sum = 0
+    for val in values:
+        weight_sum += weights[val]
+        if rand_num <= weight_sum:
+            return val
 
-DIRECTIONS = ['top', 'bottom', 'left', 'right']
 
 class WFCModel:
-    def __init__(self, image_path, tile_size, flip_horizontal=False, flip_vertical=False, rotate=False):
+    def __init__(self, image_path, tile_size, 
+                 flip_horizontal=False, 
+                 flip_vertical=False, 
+                 rotate=False):
+        
         self.tile_size = tile_size
+
         self.tileset, self.weights = get_tiles(image_path, tile_size, flip_horizontal, flip_vertical, rotate)
         self.adjacency = get_adjacent_tiles(self.tileset)
 
-        cnt = 0
-        for key in list(self.tileset.keys()):
-            if len(self.adjacency[key]['top']) == 0 or len(self.adjacency[key]['left']) == 0 or len(self.adjacency[key]['right']) == 0 or len(self.adjacency[key]['bottom']) == 0:
-                del self.tileset[key]
-                del self.weights[key]
-                cnt +=1
-        self.adjacency = get_adjacent_tiles(self.tileset)
-        print(f'{cnt} Eliminated')
+        self.tileset_middle = self.tileset.copy()
+        self.tileset_edge = {dir: {} for dir in DIRECTIONS}
+
+        for key in self.tileset:
+            for dir in DIRECTIONS:
+                if len(self.adjacency[key][dir]) == 0:
+                    del self.tileset_middle[key]
+                    self.tileset_edge[dir][key] = self.tileset[key]
 
         self.average_color = np.array([self.tileset[hash][0][0] for hash in list(self.tileset.keys())]).mean(axis=0)
 
@@ -44,12 +56,28 @@ class WFCModel:
     def init_superposition(self, size):
         width, height = size
         self.grid_size = (height, width)
+        
         superpos = np.empty((height, width), dtype=object)
         pos_pat = np.empty((height, width), dtype=object)
+
         for i in range(height):
             for j in range(width):
                 superpos[i, j] = set(self.tileset)
-                pos_pat[i, j] = {'top': set(self.tileset), 'bottom': set(self.tileset), 'left': set(self.tileset), 'right': set(self.tileset)}
+                pos_pat[i, j] = {
+                    'top': set(self.tileset_middle), 
+                    'bottom': set(self.tileset_middle), 
+                    'left': set(self.tileset_middle), 
+                    'right': set(self.tileset_middle)
+                }
+                if i == 0:
+                    pos_pat[i, j]['top'] |= set(self.tileset_edge['top'])
+                if i == height-1:
+                    pos_pat[i, j]['bottom'] |= set(self.tileset_edge['bottom'])
+                if j == 0:
+                    pos_pat[i, j]['left'] |= set(self.tileset_edge['left'])
+                if j == width-1:
+                    pos_pat[i, j]['right'] |= set(self.tileset_edge['right'])
+        
         self.superposition = superpos
         self.possible_patterns = pos_pat
         self.prop_state = {}
@@ -67,6 +95,23 @@ class WFCModel:
     def decode_index(self, n):
         return (n // self.grid_size[1], n % self.grid_size[1])
 
+    def get_minimum_entropy(self):
+        min_entropy = 999999
+        observed_cnt = 0
+        result = []
+        for r in range(self.grid_size[0]):
+            for c in range(self.grid_size[1]):
+                if len(self.superposition[r, c]) == 1:
+                    observed_cnt += 1
+                    continue
+                if len(self.superposition[r, c]) < min_entropy:
+                    result = [(r, c)]
+                    min_entropy = len(self.superposition[r][c])
+                elif len(self.superposition[r, c]) == min_entropy:
+                    result.append((r, c))
+        self.log['Observed'].append(observed_cnt)
+        return (min_entropy, result)
+    
 
     def propagate(self, r, c, dir):
         ar, ac = dir_index((r, c), dir)
@@ -88,15 +133,17 @@ class WFCModel:
 
         
     def update_superposition(self, r, c, updated_from):
+        prev_len = len(self.superposition[r, c])
+
         changed = False
         # Superposition Update
         for dir in updated_from:
             ar, ac = dir_index((r, c), dir)
             if self.is_valid_index(ar, ac):
-                prev_len = len(self.superposition[r, c])
                 self.superposition[r, c] &= self.possible_patterns[ar, ac][opposite(dir)]
-                if len(self.superposition[r, c]) < prev_len:
-                    changed = True
+        
+        if len(self.superposition[r, c]) < prev_len:
+            changed = True
 
         if not changed: # If nothing changed in Superposition, Not need to update Adjacency
             return
@@ -119,25 +166,6 @@ class WFCModel:
             #if dir in updated_from: # Not need to propagte to Updated-from
             #    continue
             self.propagate(r, c, dir)
-
-
-
-    def get_minimum_entropy(self):
-        min_entropy = 999999
-        observed_cnt = 0
-        result = []
-        for r in range(self.grid_size[0]):
-            for c in range(self.grid_size[1]):
-                if len(self.superposition[r, c]) == 1:
-                    observed_cnt += 1
-                    continue
-                if len(self.superposition[r, c]) < min_entropy:
-                    result = [(r, c)]
-                    min_entropy = len(self.superposition[r][c])
-                elif len(self.superposition[r, c]) == min_entropy:
-                    result.append((r, c))
-        self.log['Observed'].append(observed_cnt)
-        return (min_entropy, result)
     
 
     def update_wave(self):
@@ -172,12 +200,7 @@ class WFCModel:
         return 0
 
 
-    def generate(self, size, show_process=False, show_prop=False, seed=None):
-        if seed is not None:
-            random.seed(seed)
-        else:
-            seed = random.randint(0, 100000000)
-
+    def generate(self, size, show_process=False, show_prop=False):
         self.init_superposition(size)
         result = 0
         step = 0
@@ -198,8 +221,7 @@ class WFCModel:
                 plt.axis('off')
                 plt.show()
                 self.performance['Visualize'].append(time.time()-s)
-                
-        print('generate seed:', seed)
+
         return result > 0
     
 
