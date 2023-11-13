@@ -1,3 +1,4 @@
+import random
 
 DIRECTIONS = ['top', 'bottom', 'left', 'right']
 
@@ -16,3 +17,13 @@ def opposite(dir):
         return 'right'
     else:
         return 'left'
+    
+
+def weighted_choice(weights, values):
+    total_weight = sum([weights[val] for val in values])
+    rand_num = random.randint(0, total_weight)
+    weight_sum = 0 
+    for val in values:
+        weight_sum += weights[val]
+        if rand_num <= weight_sum:
+            return val

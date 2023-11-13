@@ -7,18 +7,9 @@ from IPython.display import clear_output
 from PIL import Image
 
 from wfc_tiling import get_tiles, get_adjacent_tiles
-from util import opposite, dir_index, DIRECTIONS
+from util import opposite, dir_index, weighted_choice, DIRECTIONS
 
 sys.setrecursionlimit(10**7)
-    
-def weighted_choice(weights, values):
-    total_weight = sum([weights[val] for val in values])
-    rand_num = random.randint(0, total_weight)
-    weight_sum = 0
-    for val in values:
-        weight_sum += weights[val]
-        if rand_num <= weight_sum:
-            return val
 
 
 class WFCModel:
@@ -32,16 +23,16 @@ class WFCModel:
         self.tileset, self.weights = get_tiles(image_path, tile_size, flip_horizontal, flip_vertical, rotate)
         self.adjacency = get_adjacent_tiles(self.tileset)
 
-        self.tileset_middle = self.tileset.copy()
-        self.tileset_edge = {dir: {} for dir in DIRECTIONS}
+        self.tileset_middle = set([i for i in range(len(self.tileset))])
+        self.tileset_edge = {dir: set() for dir in DIRECTIONS}
 
-        for key in self.tileset:
+        for i in range(len(self.tileset)):
             for dir in DIRECTIONS:
-                if len(self.adjacency[key][dir]) == 0:
-                    del self.tileset_middle[key]
-                    self.tileset_edge[dir][key] = self.tileset[key]
+                if len(self.adjacency[i][dir]) == 0:
+                    self.tileset_middle.remove(i)
+                    self.tileset_edge[dir].add(i)
 
-        self.average_color = np.array([self.tileset[hash][0][0] for hash in list(self.tileset.keys())]).mean(axis=0)
+        self.average_color = np.array([self.tileset[i][0][0] for i in range(len(self.tileset))]).mean(axis=0)
 
         self.superposition = None
         self.possible_patterns = None
@@ -62,21 +53,23 @@ class WFCModel:
 
         for i in range(height):
             for j in range(width):
-                superpos[i, j] = set(self.tileset)
+                superpos[i, j] = self.tileset_middle.copy()
                 pos_pat[i, j] = {
-                    'top': set(self.tileset_middle), 
-                    'bottom': set(self.tileset_middle), 
-                    'left': set(self.tileset_middle), 
-                    'right': set(self.tileset_middle)
+                    'top': self.tileset_middle.copy(), 
+                    'bottom': self.tileset_middle.copy(), 
+                    'left': self.tileset_middle.copy(), 
+                    'right': self.tileset_middle.copy()
                 }
+                """
                 if i == 0:
-                    pos_pat[i, j]['top'] |= set(self.tileset_edge['top'])
+                    pos_pat[i, j]['top'] |= self.tileset_edge['top']
                 if i == height-1:
-                    pos_pat[i, j]['bottom'] |= set(self.tileset_edge['bottom'])
+                    pos_pat[i, j]['bottom'] |= self.tileset_edge['bottom']
                 if j == 0:
-                    pos_pat[i, j]['left'] |= set(self.tileset_edge['left'])
+                    pos_pat[i, j]['left'] |= self.tileset_edge['left']
                 if j == width-1:
-                    pos_pat[i, j]['right'] |= set(self.tileset_edge['right'])
+                    pos_pat[i, j]['right'] |= self.tileset_edge['right']
+                """
         
         self.superposition = superpos
         self.possible_patterns = pos_pat
@@ -116,7 +109,7 @@ class WFCModel:
     def propagate(self, r, c, dir):
         ar, ac = dir_index((r, c), dir)
         if not self.is_valid_index(ar, ac):
-            return
+            return                      
         index_hash = self.hash_index(ar, ac)
         if index_hash in self.prop_state:
             self.prop_state[index_hash].append(opposite(dir))
@@ -124,10 +117,10 @@ class WFCModel:
             self.prop_state[index_hash] = [opposite(dir)]
 
 
-    def collapse(self, r, c, value):
-        self.superposition[r, c] = set([value])
+    def collapse(self, r, c, index):
+        self.superposition[r, c] = set([index])
         for dir in DIRECTIONS:
-            self.possible_patterns[r, c][dir] = self.adjacency[value][dir]
+            self.possible_patterns[r, c][dir] = self.adjacency[index][dir]
         for dir in DIRECTIONS:
             self.propagate(r, c, dir)
 
@@ -187,8 +180,9 @@ class WFCModel:
             return 1
         
         index = random.choice(indices)
-        tile_hash = weighted_choice(self.weights, list(self.superposition[index[0], index[1]]))
-        self.collapse(index[0], index[1], tile_hash)
+        tile_index = weighted_choice(self.weights, list(self.superposition[index[0], index[1]]))
+
+        self.collapse(index[0], index[1], tile_index)
 
         while len(self.prop_state) > 0:
             self.update_wave()
@@ -237,16 +231,16 @@ class WFCModel:
         # Loop over the grid and paste each tile onto the output image
         for i in range(self.grid_size[0]):
             for j in range(self.grid_size[1]):
-                tile_hash_list = list(self.superposition[i, j])
-                if len(tile_hash_list) == 0:
+                superpos = list(self.superposition[i, j])
+                if len(superpos) == 0:
                     return None
-                elif len(tile_hash_list) > 1:
-                    if len(tile_hash_list) >= 0.9 * len(self.tileset):
+                elif len(superpos) > 1:
+                    if len(superpos) >= 0.9 * len(self.tileset):
                         color = self.average_color
                     else:
-                        color = np.array([self.tileset[hash][0][0] for hash in tile_hash_list]).mean(axis=0)
+                        color = np.array([self.tileset[i][0][0] for i in superpos]).mean(axis=0)
                 else:
-                    color = self.tileset[tile_hash_list[0]][0][0]
+                    color = self.tileset[superpos[0]][0][0]
 
                 output_image[i][j] = color
         return Image.fromarray(output_image)
