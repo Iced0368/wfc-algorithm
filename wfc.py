@@ -228,7 +228,7 @@ class WFCModel:
     
 
     def overwrite_tile(self):
-        output_size = (self.grid_size[0]+self.tile_size[0]-1, self.grid_size[1]+self.tile_size[1]-1, 3)
+        output_size = (self.grid_size[0]+self.tile_size[1]-1, self.grid_size[1]+self.tile_size[0]-1, 3)
         output_image = np.zeros(output_size, dtype=np.uint8)
 
         # Loop over the grid and paste each tile onto the output image
