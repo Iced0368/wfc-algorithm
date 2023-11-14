@@ -29,7 +29,8 @@ class WFCModel:
         for i in range(len(self.tileset)):
             for dir in DIRECTIONS:
                 if len(self.adjacency[i][dir]) == 0:
-                    self.tileset_middle.remove(i)
+                    if i in self.tileset_middle:
+                        self.tileset_middle.remove(i)
                     self.tileset_edge[dir].add(i)
 
         self.average_color = np.array([self.tileset[i][0][0] for i in range(len(self.tileset))]).mean(axis=0)
@@ -60,16 +61,22 @@ class WFCModel:
                     'left': self.tileset_middle.copy(), 
                     'right': self.tileset_middle.copy()
                 }
-                """
+                
+        for i in range(height):
+            for j in range(width):
                 if i == 0:
-                    pos_pat[i, j]['top'] |= self.tileset_edge['top']
+                    superpos[i, j] |= self.tileset_edge['top']
+                    pos_pat[i+1, j]['top'] |= self.tileset_edge['top']
                 if i == height-1:
-                    pos_pat[i, j]['bottom'] |= self.tileset_edge['bottom']
+                    superpos[i, j] |= self.tileset_edge['bottom']
+                    pos_pat[i-1, j]['bottom'] |= self.tileset_edge['bottom']
                 if j == 0:
-                    pos_pat[i, j]['left'] |= self.tileset_edge['left']
+                    superpos[i, j] |= self.tileset_edge['left']
+                    pos_pat[i, j+1]['left'] |= self.tileset_edge['left']
                 if j == width-1:
-                    pos_pat[i, j]['right'] |= self.tileset_edge['right']
-                """
+                    superpos[i, j] |= self.tileset_edge['right']
+                    pos_pat[i, j-1]['right'] |= self.tileset_edge['right']
+                
         
         self.superposition = superpos
         self.possible_patterns = pos_pat
@@ -180,6 +187,7 @@ class WFCModel:
             return 1
         
         index = random.choice(indices)
+
         tile_index = weighted_choice(self.weights, list(self.superposition[index[0], index[1]]))
 
         self.collapse(index[0], index[1], tile_index)
@@ -195,7 +203,7 @@ class WFCModel:
 
 
     def generate(self, size, show_process=False, show_prop=False):
-        self.init_superposition(size)
+        self.init_superposition((size[0]-self.tile_size[0]+1, size[1]-self.tile_size[1]+1))
         result = 0
         step = 0
 
@@ -220,29 +228,30 @@ class WFCModel:
     
 
     def overwrite_tile(self):
-        # Create the output image with the specified size
-        #output_size = ((self.tile_size[0]-1)*(self.grid_size[0])+1, (self.tile_size[1]-1)*(self.grid_size[1])+1)
-        output_size = (self.grid_size[0]+self.tile_size[0]-1, self.grid_size[1]+self.tile_size[1]-1)
-        output_image = Image.new('RGB', output_size, (0, 0, 0))
-
-        output_size = (self.grid_size[0], self.grid_size[1], 3)
+        output_size = (self.grid_size[0]+self.tile_size[0]-1, self.grid_size[1]+self.tile_size[1]-1, 3)
         output_image = np.zeros(output_size, dtype=np.uint8)
 
         # Loop over the grid and paste each tile onto the output image
-        for i in range(self.grid_size[0]):
-            for j in range(self.grid_size[1]):
-                superpos = list(self.superposition[i, j])
+        for i in range(output_size[0]):
+            for j in range(output_size[1]):
+                ti = min(i, self.grid_size[0]-1)
+                tj = min(j, self.grid_size[1]-1)
+                
+                superpos = list(self.superposition[ti, tj])
+
                 if len(superpos) == 0:
                     return None
                 elif len(superpos) > 1:
                     if len(superpos) >= 0.9 * len(self.tileset):
                         color = self.average_color
                     else:
-                        color = np.array([self.tileset[i][0][0] for i in superpos]).mean(axis=0)
+                        color = np.array([self.tileset[k][i-ti][j-tj] for k in superpos]).mean(axis=0)
                 else:
-                    color = self.tileset[superpos[0]][0][0]
+                    color = self.tileset[superpos[0]][i-ti][j-tj]
 
                 output_image[i][j] = color
+
+        
         return Image.fromarray(output_image)
 
 
