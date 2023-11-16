@@ -11,12 +11,12 @@ def get_tiles(image_path, tile_size, flip_horizontal=False, flip_vertical=False,
     image = Image.open(image_path).convert("RGB")
     tiles = {}
     tileset = []
-    width, height = image.size
+    height, width = image.size
     weights = []
 
-    for i in range(0, width - tile_size[0] + 1):
-        for j in range(0, height - tile_size[1] + 1):
-            box = (i, j, i+tile_size[0], j+tile_size[1])
+    for i in range(0, height - tile_size[0] + 1):
+        for j in range(0, width - tile_size[1] + 1):
+            box = (j, i, j+tile_size[1], i+tile_size[0])
             tile_img = image.crop(box)
 
             if flip_horizontal:
@@ -73,17 +73,17 @@ def get_adjacent_tiles(tiles):
             hash_value = hash_tile(slices[j])
 
             if hash_value not in edge_sources:
-                edge_sources[hash_value] = {dir: [] for dir in DIRECTIONS}
+                edge_sources[hash_value] = [[] for dir in DIRECTIONS]
 
             edge_sources[hash_value][DIRECTIONS[j]].append(i)
 
-    adjacent_tiles = [{dir: set() for dir in DIRECTIONS} for i in range(len(tiles))]
+    adjacent_tiles = [[set() for dir in DIRECTIONS] for i in range(len(tiles))]
 
     for edges in edge_sources.values(): 
         for dir in DIRECTIONS:
             for tile_index in edges[dir]:
                 adj = adjacent_tiles[tile_index]
-                for other_index in edges[opposite(dir)]:
+                for other_index in edges[opposite[dir]]:
                     adj[dir].add(other_index)
 
     return adjacent_tiles

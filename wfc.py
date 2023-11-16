@@ -7,7 +7,7 @@ from IPython.display import clear_output
 from PIL import Image
 
 from wfc_tiling import get_tiles, get_adjacent_tiles
-from util import opposite, dir_index, weighted_choice, DIRECTIONS
+from util import opposite, dir_index, weighted_choice, DIRECTIONS, TOP, BOTTOM, LEFT, RIGHT
 
 sys.setrecursionlimit(10**7)
 
@@ -24,7 +24,7 @@ class WFCModel:
         self.adjacency = get_adjacent_tiles(self.tileset)
 
         self.tileset_middle = set([i for i in range(len(self.tileset))])
-        self.tileset_edge = {dir: set() for dir in DIRECTIONS}
+        self.tileset_edge = [set() for dir in DIRECTIONS]
 
         for i in range(len(self.tileset)):
             for dir in DIRECTIONS:
@@ -46,7 +46,7 @@ class WFCModel:
 
 
     def init_superposition(self, size):
-        width, height = size
+        height, width = size
         self.grid_size = (height, width)
         
         superpos = np.empty((height, width), dtype=object)
@@ -55,27 +55,27 @@ class WFCModel:
         for i in range(height):
             for j in range(width):
                 superpos[i, j] = self.tileset_middle.copy()
-                pos_pat[i, j] = {
-                    'top': self.tileset_middle.copy(), 
-                    'bottom': self.tileset_middle.copy(), 
-                    'left': self.tileset_middle.copy(), 
-                    'right': self.tileset_middle.copy()
-                }
+                pos_pat[i, j] = [
+                    self.tileset_middle.copy(), 
+                    self.tileset_middle.copy(), 
+                    self.tileset_middle.copy(), 
+                    self.tileset_middle.copy()
+                ]
                 
         for i in range(height):
             for j in range(width):
                 if i == 0:
-                    superpos[i, j] |= self.tileset_edge['top']
-                    pos_pat[i+1, j]['top'] |= self.tileset_edge['top']
+                    superpos[i, j] |= self.tileset_edge[TOP]
+                    pos_pat[i+1, j][TOP] |= self.tileset_edge[TOP]
                 if i == height-1:
-                    superpos[i, j] |= self.tileset_edge['bottom']
-                    pos_pat[i-1, j]['bottom'] |= self.tileset_edge['bottom']
+                    superpos[i, j] |= self.tileset_edge[BOTTOM]
+                    pos_pat[i-1, j][BOTTOM] |= self.tileset_edge[BOTTOM]
                 if j == 0:
-                    superpos[i, j] |= self.tileset_edge['left']
-                    pos_pat[i, j+1]['left'] |= self.tileset_edge['left']
+                    superpos[i, j] |= self.tileset_edge[LEFT]
+                    pos_pat[i, j+1][LEFT] |= self.tileset_edge[LEFT]
                 if j == width-1:
-                    superpos[i, j] |= self.tileset_edge['right']
-                    pos_pat[i, j-1]['right'] |= self.tileset_edge['right']
+                    superpos[i, j] |= self.tileset_edge[RIGHT]
+                    pos_pat[i, j-1][RIGHT] |= self.tileset_edge[RIGHT]
                 
         
         self.superposition = superpos
@@ -119,9 +119,9 @@ class WFCModel:
             return                      
         index_hash = self.hash_index(ar, ac)
         if index_hash in self.prop_state:
-            self.prop_state[index_hash].append(opposite(dir))
+            self.prop_state[index_hash].append(opposite[dir])
         else:
-            self.prop_state[index_hash] = [opposite(dir)]
+            self.prop_state[index_hash] = [opposite[dir]]
 
 
     def collapse(self, r, c, index):
@@ -140,7 +140,7 @@ class WFCModel:
         for dir in updated_from:
             ar, ac = dir_index((r, c), dir)
             if self.is_valid_index(ar, ac):
-                self.superposition[r, c] &= self.possible_patterns[ar, ac][opposite(dir)]
+                self.superposition[r, c] &= self.possible_patterns[ar, ac][opposite[dir]]
         
         if len(self.superposition[r, c]) < prev_len:
             changed = True
@@ -228,7 +228,7 @@ class WFCModel:
     
 
     def overwrite_tile(self):
-        output_size = (self.grid_size[0]+self.tile_size[1]-1, self.grid_size[1]+self.tile_size[0]-1, 3)
+        output_size = (self.grid_size[0]+self.tile_size[0]-1, self.grid_size[1]+self.tile_size[1]-1, 3)
         output_image = np.zeros(output_size, dtype=np.uint8)
 
         # Loop over the grid and paste each tile onto the output image
@@ -250,7 +250,6 @@ class WFCModel:
                     color = self.tileset[superpos[0]][i-ti][j-tj]
 
                 output_image[i][j] = color
-
         
         return Image.fromarray(output_image)
 

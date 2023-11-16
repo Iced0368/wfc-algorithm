@@ -1,23 +1,15 @@
 import random
 
-DIRECTIONS = ['top', 'bottom', 'left', 'right']
+TOP, BOTTOM, LEFT, RIGHT = 0, 1, 2, 3
+DIRECTIONS = [0, 1, 2, 3]
+opposite = [1, 0, 3, 2]
 
-drdc = {'top': (-1, 0), 'bottom': (1, 0), 'left': (0, -1), 'right': (0, 1)}
+drdc = [(-1, 0), (1, 0), (0, -1), (0, 1)]
 
 def dir_index(index, dir):
     dr, dc = drdc[dir]
     return (index[0]+dr, index[1]+dc)
 
-def opposite(dir):
-    if dir == 'top':
-        return 'bottom'
-    elif dir =='bottom':
-        return 'top'
-    elif dir =='left':
-        return 'right'
-    else:
-        return 'left'
-    
 
 def weighted_choice(weights, values):
     total_weight = sum([weights[val] for val in values])
