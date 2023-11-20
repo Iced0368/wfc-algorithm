@@ -83,7 +83,7 @@ class WFCModel:
         self.prop_state = {}
         self.performance = {'Propagate': [], 'Visualize': []}
         self.log = {'Observed': []}
-        print('superposition initialization finised')
+        #print('superposition initialization finised')
 
 
     def is_valid_index(self, r, c):

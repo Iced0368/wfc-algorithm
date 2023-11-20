@@ -11,7 +11,7 @@ def get_tiles(image_path, tile_size, flip_horizontal=False, flip_vertical=False,
     image = Image.open(image_path).convert("RGB")
     tiles = {}
     tileset = []
-    height, width = image.size
+    width, height = image.size
     weights = []
 
     for i in range(0, height - tile_size[0] + 1):
@@ -41,7 +41,7 @@ def get_tiles(image_path, tile_size, flip_horizontal=False, flip_vertical=False,
                     weights.append(1)
                     tileset.append(np.array(tile_img_v))
 
-            if rotate:
+            if rotate and tile_size[0] == tile_size[1]:
                 for k in range(3):
                     tile_img_r = tile_img.rotate((k+1)*90)
                     tile_hash_r = hash_tile(tile_img_r)
